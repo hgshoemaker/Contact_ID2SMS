@@ -18,4 +18,4 @@ This code is for a Arduino Leonardo board. It has more program space than a UNO
  For more details see: http://yaab-arduino.blogspot.com/p/wifiesp-example-client.html
  ESP8266 AT Firmware 1.5.4
   
- ThingSpeak.com HTTPThing to Twillio SMS API
+ ThingSpeak.com ThingHTTP to Twillio SMS API
