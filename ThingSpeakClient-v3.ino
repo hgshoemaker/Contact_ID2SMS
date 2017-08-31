@@ -54,9 +54,7 @@ const int dtmfContactID[]  = { 'X', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 const int dtmfValue[]      = {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15 };
 const int intValue[]       = {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   0,   0,   0,   0,   0,   0 };
 //API key for the Thingspeak ThingHTTP already configured
-const String apiKey = "1IS0N3G3A53HUTSG";
-//the number the message should be sent to
-//const String sendNumber = "+13195384203";
+const String apiKey = "your thingspeak thingHTTP apiKey";
 
 // Emulate Serial1 on pins 0/1 if not present
 #ifndef HAVE_HWSERIAL1
@@ -64,8 +62,8 @@ const String apiKey = "1IS0N3G3A53HUTSG";
 SoftwareSerial Serial1(0, 1); // RX, TX
 #endif
 
-char ssid[] = "clk3";            // your network SSID (name)
-char pass[] = "itbemagic7";        // your network password
+char ssid[] = "your network SSID";            // your network SSID (name)
+char pass[] = "your wifi password";        // your network password
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 char server[] = "api.thingspeak.com";
 
@@ -176,7 +174,7 @@ ZoneData zones[MAX_ZONES] = {
 };
 
 PhoneData phones[MAX_PHONES] = {
-  { true, "+13195384203" },
+  { true, "+1319xxxxxxx" },
   { false, "+xxxxxxxxxxx" }
 };
 
