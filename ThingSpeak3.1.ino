@@ -45,8 +45,8 @@
 #define MAX_ZONES                   8
 #define MAX_PHONES                  2
 #define MAX_ZONE_NAME_LENGTH       15
-#define MAX_SMS_MESSAGE           140
-#define MAX_SMS_LENGTH            120
+#define MAX_SMS_MESSAGE           180
+#define MAX_SMS_LENGTH            160
 #define MAX_SMS_NUMBER             15
 
 const int dtmf8870[]       = { 'D', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '*', '#', 'A', 'B', 'C' };
