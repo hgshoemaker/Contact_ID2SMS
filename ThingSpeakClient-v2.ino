@@ -37,8 +37,10 @@
 #define STATE_ON_HOOK              1
 #define STATE_WAIT_PHONE_NUMBER    2
 #define STATE_WAIT_CONTACT_ID      3
-#define SMS_SMS_CHECK          15000 // Time between SMS checks
+#define SMS_CHECK              15000 // Time between SMS checks
 #define SMS_SMS_DELAY          15000 // Time before sending a partially empty SMS message
+#define SMS_CHECK_TIME_GOOD    10000 // Time between checking ESP module
+#define SMS_CHECK_TIME_BAD     20000 // Time between checking ESP module
 
 #define MAX_ZONES                   8
 #define MAX_PHONES                  2
@@ -52,8 +54,9 @@ const int dtmfContactID[]  = { 'X', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 const int dtmfValue[]      = {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15 };
 const int intValue[]       = {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   0,   0,   0,   0,   0,   0 };
 //API key for the Thingspeak ThingHTTP already configured
-const String apiKey = "yourThingSpeakAPIkey";
+const String apiKey = "1IS0N3G3A53HUTSG";
 //the number the message should be sent to
+//const String sendNumber = "+13195384203";
 
 // Emulate Serial1 on pins 0/1 if not present
 #ifndef HAVE_HWSERIAL1
@@ -61,8 +64,8 @@ const String apiKey = "yourThingSpeakAPIkey";
 SoftwareSerial Serial1(0, 1); // RX, TX
 #endif
 
-char ssid[] = "yourSSID";            // your network SSID (name)
-char pass[] = "yourWiFiPassword";        // your network password
+char ssid[] = "clk3";            // your network SSID (name)
+char pass[] = "itbemagic7";        // your network password
 int status = WL_IDLE_STATUS;     // the Wifi radio's status
 char server[] = "api.thingspeak.com";
 
@@ -97,11 +100,11 @@ WiFiEspClient client;
 #define EVENT_CODE_BURGLAR_TAMPER                    137
 #define EVENT_CODE_BURGLAR_NEAR_ALARM                138
 #define EVENT_CODE_BURGLAR_INTRUSION_VERIFIER        139
+#define EVENT_CODE_GENERAL_ALARM                     140
 #define EVENT_CODE_SYSTEM_AC_FAIL                    301
 #define EVENT_CODE_OCRA_OPEN_CLOSE                   402
 #define EVENT_CODE_OCRA_CANCEL                       406
 #define EVENT_CODE_RECENT_CLOSE                      459
-#define EVENT_CODE_COMM_TEST                         602
 
 #define IN_CANCEL                                    0
 #define IN_ALARM                                     1
@@ -132,10 +135,10 @@ Debounce   offHook = Debounce(50, PIN_OFF_HOOK);
 int        state;
 int        dtmfBit;
 int        dtmfDigit;
-boolean    dtmfDecoded;
-boolean    dtmfAvailable;
 int        dtmfOffset;
 int        dtmfChecksum;
+boolean    dtmfDecoded;
+boolean    dtmfAvailable;
 int        dtmfData[MAX_DTMF_DATA];
 AlarmEvent alarmEvents[MAX_ALARM_EVENTS];
 byte       alarmEventsHead;
@@ -150,18 +153,17 @@ word       eventCode;
 word       eventZone;
 int        t;
 unsigned long smsSendSms;
+unsigned long espCheck;
+unsigned long smsCheck;
 char          smsBuffer[MAX_SMS_MESSAGE];
 char          smsNumber[MAX_SMS_NUMBER];
 char          smsMessage[MAX_SMS_MESSAGE];
 unsigned long now;
 unsigned long dtmfTime;
-int        address;
-int        z;
-int        za;
+
 
 // --------------------------------------------------------------
 // Configuration
-// true = enabled, Zone description, true = report alarms, true = report restorals
 ZoneData zones[MAX_ZONES] = {
   { true, "ZONE ONE",    true, true },
   { true, "ZONE TWO",    true, true },
@@ -172,9 +174,9 @@ ZoneData zones[MAX_ZONES] = {
   { false, "ZONE SEVEN",  false, false },
   { false, "ZONE EIGHT",  false, false }
 };
-// PhoneData true = use the following number... the phone number is your Twillio registered cell phone #
+
 PhoneData phones[MAX_PHONES] = {
-  { true, "+1xxxxxxxxxx" }, 
+  { true, "+13195384203" },
   { false, "+xxxxxxxxxxx" }
 };
 
@@ -206,6 +208,9 @@ void setup()
   dtmfAvailable = false;
   alarmEventsInit(MAX_ALARM_EVENTS);
   state = STATE_ON_HOOK;
+  espCheck =0;
+  smsSendSms = 0;
+  smsCheck = 0;
 
   Serial.println("Alarm Panel SMS Gateway (APSG)");
   delay(2000);
@@ -227,11 +232,10 @@ void setup()
 
 void loop()
 {
-  byte bResult;
-  int  iSmsIndex;
-
+  
   now = millis();
   offHook.update();
+  espCheck = now;
 
   if (state == STATE_WAIT_PHONE_NUMBER || state == STATE_WAIT_CONTACT_ID) {
     if (offHook.read() == 1) {
@@ -244,6 +248,20 @@ void loop()
       dtmfHandler();
     }
   }
+
+    // Check the ESP8266 buffer every now and then if we arent inside a call from the alarm
+  if (state == STATE_ON_HOOK) {
+    if (now > smsCheck) {
+      smsCheck = now + SMS_CHECK_TIME_GOOD;
+    }
+  }
+  if (status == WL_CONNECTED) {
+    // Send SMS messages if the timer has expired
+     if ((smsSendSms != 0) && (now > smsSendSms)) {
+        sendSmsMessage();
+        smsCheck = millis() + SMS_CHECK;
+      }
+    }
 
   switch (state) {
     case STATE_ON_HOOK:
@@ -329,9 +347,7 @@ void loop()
   }
 }
 
-/*
-This is where the sms message gets sent to the ESP8266
-*/
+
 void sendSMS(String number, String message)
 {
   // attempt to connect to WiFi network
@@ -360,7 +376,7 @@ void sendSMS(String number, String message)
     client.print("Host: ");
     client.println(server);
     client.println("Connection: close");
-    Serial.println("Connection: closed");
+    //Serial.println("Connection: closed");
     client.println();
   }
   else
@@ -378,10 +394,10 @@ void sendSMS(String number, String message)
       Serial.print(c);
     }
   }
-  Serial.println();
+  //Serial.println();
   client.stop();
 }
-// We have to encode the sms message string before sending it.
+
 String URLEncode(const char* msg)
 {
   const char *hex = "0123456789abcdef";
@@ -411,7 +427,6 @@ void handleAlarmEvents(void) {
     alarmEventsGet(eventQualifier, eventCode, eventZone);
     smsBuffer[0] = 0;
     // NOTE: Only add messages to smsBuffer if you want to send it via SMS
-	// e.g. comment out the sprintf(smsBuffer,xxx) line to not send
     switch (eventQualifier) {
       case EVENT_QUALIFIER_OPENING:
         switch (eventCode) {
@@ -419,45 +434,45 @@ void handleAlarmEvents(void) {
             if (eventZone <= MAX_ZONES) {
               tempZone = eventZone - 1;
               if (zones[tempZone].enabled == true && zones[tempZone].alarm == true) {
-                sprintf(smsBuffer, "ALARM %s", zones[tempZone].name);
+                sprintf(smsBuffer, "ALARM %s ", zones[tempZone].name);
                 //Serial.print(smsBuffer);
               }
             }
-            sprintf(smsBuffer, "ALARM BURGLARY ZONE: %d", eventZone);
+            sprintf(smsBuffer, "ALARM BURGLARY ZONE: %d ", eventZone);
             break;
 
           case EVENT_CODE_BURGLAR_TAMPER:
-            sprintf(smsBuffer, "TAMPER %d", eventZone);
+            sprintf(smsBuffer, "TAMPER %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_SYSTEM_AC_FAIL:
-            sprintf(smsBuffer, "AC FAIL %d", eventZone);
+            sprintf(smsBuffer, "AC FAIL %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_OCRA_OPEN_CLOSE:
-            sprintf(smsBuffer, "DISARM SYSTEM USER: %d \n", eventZone);
+            sprintf(smsBuffer, "DISARM SYSTEM USER: %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_RECENT_CLOSE:
-            sprintf(smsBuffer, "RECENT CLOSE: %d", eventZone);
+            sprintf(smsBuffer, "RECENT CLOSE: %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_OCRA_CANCEL:
-            //sprintf(smsBuffer, "CANCEL USER: %d", eventZone);
+            sprintf(smsBuffer, "CANCEL USER: %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
-          case EVENT_CODE_COMM_TEST:
-            //sprintf(smsBuffer, "Communications Test: %d", eventZone);
+          case EVENT_CODE_GENERAL_ALARM:
+            sprintf(smsBuffer, "General Alarm: %d ", eventZone);
             //Serial.print(smsBuffer);
-            break;          
+            break;
 
           default:
-            sprintf(smsBuffer, "ALARM UNKNOWN ET: %d EZ: %d", eventCode, eventZone);
+            sprintf(smsBuffer, "ALARM UNKNOWN ET: %d EZ: %d ", eventCode, eventZone);
             //Serial.print(smsBuffer);
             break;
         }
@@ -469,43 +484,43 @@ void handleAlarmEvents(void) {
             if (eventZone <= MAX_ZONES) {
               tempZone = eventZone - 1;
               if (zones[tempZone].enabled == true && zones[tempZone].cancel == true) {
-                sprintf(smsBuffer, "RESTORAL %s", zones[tempZone].name);
+                sprintf(smsBuffer, " RESTORAL %s", zones[tempZone].name);
                 // Serial.print(smsBuffer);
               }
             }
-            sprintf(smsBuffer, "RESTORAL BURGLARY ZONE: %d", eventZone);
+            sprintf(smsBuffer, "RESTORAL ZONE: %d ", eventZone);
             // Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_BURGLAR_TAMPER:
-            sprintf(smsBuffer, "RESTORAL TAMPER %d", eventZone);
+            sprintf(smsBuffer, "RESTORAL TAMPER %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_SYSTEM_AC_FAIL:
-            sprintf(smsBuffer, "RESTORAL AC FAIL %d", eventZone);
+            sprintf(smsBuffer, "RESTORAL AC FAIL %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_OCRA_OPEN_CLOSE:
-            sprintf(smsBuffer, "ARM SYSTEM USER: %d \n", eventZone);
+            sprintf(smsBuffer, "ARM SYSTEM USER: %d ", eventZone);
             //Serial.print(smsBuffer);
             break;
 
           case EVENT_CODE_RECENT_CLOSE:
-            sprintf(smsBuffer, "RECENT CLOSE: %d", eventZone);
+            sprintf(smsBuffer, "RECENT CLOSE: %d ", eventZone);
             // Serial.print(smsBuffer);
             break;
 
           default:
-            sprintf(smsBuffer, "CANCEL UNKNOWN ET: %d ZONE: %d", eventCode, eventZone);
+            sprintf(smsBuffer, "CANCEL UNKNOWN ET: %d ZONE: %d ", eventCode, eventZone);
             //Serial.print(smsBuffer);
             break;
         }
         break;
 
       default:
-        sprintf(smsBuffer, "UNKNOWN EQ: %d ET: %d ZONE: %d", eventQualifier, eventCode, eventZone);
+        sprintf(smsBuffer, "UNKNOWN EQ: %d ET: %d ZONE: %d ", eventQualifier, eventCode, eventZone);
         //Serial.print(smsBuffer);
         break;
     }
@@ -515,15 +530,10 @@ void handleAlarmEvents(void) {
       int nml = strlen(smsBuffer);
       int eml = strlen(smsMessage);
       // CHECK If existing message does not have space for new message
-      //if ((eml + 50 + nml) < MAX_SMS_LENGTH) {
-      if ((eml + nml) > 0) {
+      if ((eml + 2 + nml) < MAX_SMS_LENGTH) {
+      //if ((eml + nml) > 0) {
         strcat(smsMessage, smsBuffer);
-        sendSmsMessage();
         eml = 0;
-      }
-      // Add a carriage return if required
-      if (eml != 0) {
-        strcat(smsMessage, "\r\n");
       }
       // Add the new message to the existing message
       //strcat(smsMessage, smsBuffer);
@@ -538,10 +548,10 @@ void sendSmsMessage(void) {
   if (strlen(smsMessage) > 0) {
     for (p = 0; p < MAX_PHONES; p++) {
       if (phones[p].enabled == true) {
-       Serial.println("------------------------------");
+       //Serial.println("------------------------------");
        Serial.print("SMS TO: "); Serial.println(phones[p].number);
        Serial.println(smsMessage);
-       Serial.println("------------------------------");
+       //Serial.println("------------------------------");
        sendSMS(phones[p].number, URLEncode(smsMessage));
        
       }
@@ -551,36 +561,6 @@ void sendSmsMessage(void) {
   smsSendSms = 0;
 
 }
-
-
-void checkEeprom() {
-  int e;
-  int z;
-  int a;
-  int ad;
-
-  /*
-    e = EEPROM.read(0x00);
-    Serial.print("Version detected: "); Serial.println(e);
-    if (e != FIRMWARE_VERSION) {
-     Serial.println("Updating EEPROM");
-     a = 0x01;
-     for (z=0; z<MAX_ZONES; z++) {
-        sprintf(tstr, "ZONE %2d", (z + 1));
-        for (ad=0; ad<MAX_ZONE_NAME_LENGTH; ad++) {
-           EEPROM.write(a, tstr[ad]);
-           a++;
-        }
-        EEPROM.write(a, 1);
-        a++;
-     }
-     EEPROM.write(0x00, FIRMWARE_VERSION);
-    } else {
-     Serial.println("Preserving EEPROM");
-    }
-  */
-}
-
 
 // ---------------------------------------------------------------------------
 // Read and decode a DTMF tone if available, dont read the same tone twice
@@ -649,4 +629,3 @@ boolean alarmEventsGet(byte &a, word &b, word &c) {
   alarmEventsAvl = alarmEventsAvl - 1;
   return true;
 }
-
