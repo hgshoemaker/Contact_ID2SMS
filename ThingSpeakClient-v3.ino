@@ -53,6 +53,7 @@ const int dtmf8870[]       = { 'D', '1', '2', '3', '4', '5', '6', '7', '8', '9',
 const int dtmfContactID[]  = { 'X', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '*', '#', 'D', 'E', 'F' };
 const int dtmfValue[]      = {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,  11,  12,  13,  14,  15 };
 const int intValue[]       = {   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   0,   0,   0,   0,   0,   0 };
+
 //API key for the Thingspeak ThingHTTP already configured
 const String apiKey = "your thingspeak thingHTTP apiKey";
 
@@ -162,6 +163,7 @@ unsigned long dtmfTime;
 
 // --------------------------------------------------------------
 // Configuration
+// true = enabled, Zone description, true = report alarms, true = report restorals
 ZoneData zones[MAX_ZONES] = {
   { true, "ZONE ONE",    true, true },
   { true, "ZONE TWO",    true, true },
@@ -173,6 +175,7 @@ ZoneData zones[MAX_ZONES] = {
   { false, "ZONE EIGHT",  false, false }
 };
 
+// PhoneData true = use the following number... the phone number is your Twillio registered cell phone #
 PhoneData phones[MAX_PHONES] = {
   { true, "+1319xxxxxxx" },
   { false, "+xxxxxxxxxxx" }
